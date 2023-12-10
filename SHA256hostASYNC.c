@@ -11,7 +11,7 @@
 #define DPU_EXE "./SHA256DPU"
 #endif
 
-#define NUM_MSG 1024
+#define NUM_MSG 16*64
 
 char msg[MESSAGE_SIZE*16];
 char digests[8*NRDPU*NR_TASKLETS];
@@ -35,6 +35,7 @@ void readFile(unsigned char* msg, int index)
 int main()
 {
 	int d=0;
+uint32_t numDPU=0;
 	uint32_t DPUs[NRDPU];
 	uint32_t digests_DPU[8];
 	uint32_t digests_HOST[8];
@@ -43,20 +44,23 @@ int main()
 	
 	double DPUkernelTime=0, CPUDPUTime=0,DPUCPUtime=0,initTime=0,endTime=0,HostTime=0;
 	int processedFileDPU=0, processedFileHost=0,FileTime=0,DPUtotalTime=0;
-	struct dpu_set_t set, dpu;
+	struct dpu_set_t set, dpu,setR;
 	double tmpTimer[7];
 	uint32_t each_dpu,DPUtime,transferTime,numberOfTransfer,clockPerSec,SHAtimeDPU;
 	uint32_t tmpH[8];
 	uint32_t tmpD[8*24];
 	
-    DPU_ASSERT(dpu_alloc(NRDPU, NULL, &set));	//Allocating DPUs
+//    DPU_ASSERT(dpu_alloc(NRDPU, NULL, &set));	//Allocating DPUs
+DPU_ASSERT(dpu_alloc_ranks(1,NULL,&setR));
+printf("DPU_ALLOCATE_ALL: %d\n",DPU_ALLOCATE_ALL);
+DPU_ASSERT(dpu_get_nr_dpus(setR,&numDPU));
 	if(NRDPU*16<=NUM_MSG)
 	{
 		printf("--Hashing\033[1;32m %d file\033[0m\t TOTAL = \033[1;32m%d MB\033[0m\n",NUM_MSG,(NUM_MSG/1024)*(MESSAGE_SIZE/1024));
 		printf("Message size: %d kB\n",MESSAGE_SIZE/1024);
-		printf("--Allocated %d DPUs\n",NRDPU);
+		printf("--Allocated %d DPUs\n",numDPU);
 		printf("--Using %d tasklets\n",NR_TASKLETS);
-		DPU_ASSERT(dpu_load(set, DPU_EXE, NULL));	//Loading DPU program
+		DPU_ASSERT(dpu_load(setR, DPU_EXE, NULL));	//Loading DPU program
 	}
 	else
 	{
@@ -84,6 +88,8 @@ int main()
 	initTime = my_clock();	//START Measuring performance
 	for(processedFileDPU=0;processedFileDPU<NUM_MSG;d++)
 	{
+	DPU_RANK_FOREACH(setR,set)
+	{
 		printf("Processed files: %d/%d\n",processedFileDPU,NUM_MSG);
 		DPU_FOREACH(set,dpu,each_dpu)
 		{
@@ -99,9 +105,10 @@ int main()
 			if(DPUs[each_dpu]==1)
 			{
 				//COPY FROM DPU
-				dpu_sync(dpu);
+//				dpu_sync(dpu);
 				tmpTimer[2]=my_clock();
-				DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+				DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
+				DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_ASYNC));
 				DPUCPUtime += (my_clock() - tmpTimer[2]);		
 				
 				for(int k=0;k<8*NR_TASKLETS;++k){ digests_DPU[k%8] = digests_DPU[k%8] ^ tmpD[k]; }
@@ -113,11 +120,14 @@ int main()
 			
 			//COPY TO DPU
 			tmpTimer[0] = my_clock();
-			DPU_ASSERT(dpu_copy_to(dpu,"msgs",0,msg,MESSAGE_SIZE*NR_TASKLETS));
+			DPU_ASSERT(dpu_prepare_xfer(dpu,msg));
+			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_ASYNC));
 			CPUDPUTime += (my_clock() - tmpTimer[0]);
 			
 			DPU_ASSERT(dpu_launch(dpu, DPU_ASYNCHRONOUS));
+			printf("%d: Launched DPU %d\n",d,each_dpu);
 			}
+	}
 	}
 
 	//RETRIEVING LAST RESULTS
@@ -126,7 +136,8 @@ int main()
 			dpu_sync(dpu);
 			
 			tmpTimer[2]=my_clock();
-			DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+			DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
+			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_ASYNC));
 			DPU_ASSERT(dpu_copy_from(dpu,"DPUtime",0,&DPUtime,sizeof(uint32_t)));
 			DPU_ASSERT(dpu_copy_from(dpu,"transferTime",0,&transferTime,sizeof(uint32_t)));
 			DPU_ASSERT(dpu_copy_from(dpu,"SHAtime",0,&SHAtimeDPU,sizeof(uint32_t)));
