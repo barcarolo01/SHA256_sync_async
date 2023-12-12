@@ -50,10 +50,10 @@ int main()
 	uint32_t tmpH[8];
 	uint32_t tmpD[8*24];
 	
-//    DPU_ASSERT(dpu_alloc(NRDPU, NULL, &set));	//Allocating DPUs
-DPU_ASSERT(dpu_alloc_ranks(NRDPU,NULL,&set));
-printf("DPU_ALLOCATE_ALL: %d\n",DPU_ALLOCATE_ALL);
+DPU_ASSERT(dpu_alloc(NRDPU, NULL, &set));	//Allocating DPUs
 DPU_ASSERT(dpu_get_nr_dpus(set,&numDPU));
+printf("DPU_ALLOCATE_ALL: %d\n",numDPU);
+
 	if(NRDPU*16<=NUM_MSG)
 	{
 		printf("--Hashing\033[1;32m %d file\033[0m\t TOTAL = \033[1;32m%d MB\033[0m\n",NUM_MSG,(NUM_MSG/1024)*(MESSAGE_SIZE/1024));
@@ -91,6 +91,7 @@ DPU_ASSERT(dpu_get_nr_dpus(set,&numDPU));
 		printf("Processed files: %d/%d\n",processedFileDPU,NUM_MSG);
 		DPU_FOREACH(set,dpu,each_dpu)
 		{
+			//Init buffer from files
 			tmpTimer[6] = my_clock();
 			for(int j=0;j<NR_TASKLETS;++j)
 			{
@@ -112,10 +113,7 @@ DPU_ASSERT(dpu_get_nr_dpus(set,&numDPU));
 				
 				for(int k=0;k<8*NR_TASKLETS;++k){ digests_DPU[k%8] = digests_DPU[k%8] ^ tmpD[k]; }
 			}
-			else
-			{
-				DPUs[each_dpu]=1;
-			}	
+			else{	DPUs[each_dpu]=1; }	
 			
 			//COPY TO DPU
 			tmpTimer[0] = my_clock();
