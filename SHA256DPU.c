@@ -24,7 +24,7 @@ int main()
 	int initTime=0;
 	if(me()==0){ initTime = perfcounter_config(COUNT_CYCLES, false); }
 	char  cache[CACHE_SIZE];
-	printf("%d\n",msgs[0]);
+	//printf("%d\n",msgs[0]);
 	
 	for(int i=0;i<(MESSAGE_SIZE/CACHE_SIZE);++i)
 	{
@@ -43,11 +43,13 @@ int main()
 			
 			if(me()==0){  SHAtime = perfcounter_get(); }
 			SHA256_t(cache,hash_digests+me()*8,CACHE_SIZE,i);
-			if(me()==0){ SHAtime += perfcounter_get() - SHAtime; }
+			if(me()==0){ SHAtime += perfcounter_get() - SHAtime;}
+			
+			if(me()==0){printf("INSIDE: %08X\n",hash_digests[0]);}
 	}
-	
-	
+	 
 	
 	if(me()==0) { DPUtime = perfcounter_get() - initTime;}
+	
     return 0;
 }

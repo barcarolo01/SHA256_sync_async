@@ -11,8 +11,6 @@
 #define DPU_EXE "./SHA256DPU"
 #endif
 
-#define NUM_MSG 1024
-
 char msg[MESSAGE_SIZE*16];
 char digests[8*NRDPU*NR_TASKLETS];
 
