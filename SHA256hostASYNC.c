@@ -91,6 +91,7 @@ printf("DPU_ALLOCATE_ALL: %d\n",numDPU);
 		printf("Processed files: %d/%d\n",processedFileDPU,NUM_MSG);
 		DPU_FOREACH(set,dpu,each_dpu)
 		{
+printf("Foreach started for DPU n. %d\n",each_dpu);
 			//Init buffer from files
 			tmpTimer[6] = my_clock();
 			for(int j=0;j<NR_TASKLETS;++j)
@@ -100,28 +101,31 @@ printf("DPU_ALLOCATE_ALL: %d\n",numDPU);
 				uint32_t t=padding(msg+MESSAGE_SIZE*j,MESSAGE_SIZE-9);
 			}
 			FileTime += (my_clock() - tmpTimer[6]);
-			
+printf("File read for DPU n. %d\n",each_dpu);
 			//Retrieving results, if available
 			if(DPUs[each_dpu]==1)
 			{
 				//COPY FROM DPU
-				dpu_sync(dpu);
+				//sync(dpu);
 				tmpTimer[2]=my_clock();
-				DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
-				DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
+//				DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
+//				DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
+				DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
 				DPUCPUtime += (my_clock() - tmpTimer[2]);		
 				
 				for(int k=0;k<8*NR_TASKLETS;++k){ digests_DPU[k%8] = digests_DPU[k%8] ^ tmpD[k]; }
 			}
 			else{	DPUs[each_dpu]=1; }	
-			
+
+printf("Results retrieved for DPU n. %d\n",each_dpu);
 			//COPY TO DPU
 			tmpTimer[0] = my_clock();
-			DPU_ASSERT(dpu_prepare_xfer(dpu,msg));
-			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_DEFAULT));
-			//DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+//			DPU_ASSERT(dpu_prepare_xfer(dpu,msg));
+//			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_DEFAULT));
+//			DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+			DPU_ASSERT(dpu_copy_to(dpu,"msgs",0,msg,MESSAGE_SIZE*NR_TASKLETS));
 			CPUDPUTime += (my_clock() - tmpTimer[0]);
-			
+printf("Push xfer done for DPU n. %d\n",each_dpu);
 			DPU_ASSERT(dpu_launch(dpu, DPU_ASYNCHRONOUS));
 			printf("%d: Launched DPU %d\n",d,each_dpu);
 			}
