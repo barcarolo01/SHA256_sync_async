@@ -13,11 +13,9 @@
 
 #define NRRANKS NRDPU/64
 
-#define NRROUND 1
-
 #define NUM_MSG (16*NRDPU)*NRROUND
 
-char msg[MESSAGE_SIZE*16];
+char msg[MESSAGE_SIZE*16*512];
 char digests[8*NRDPU*NR_TASKLETS];
 
 static inline double my_clock(void) {
@@ -80,7 +78,7 @@ printf("Allocated: %d DPUs\n",numDPU);
 	printf("NUM_MSG: %d\n",NUM_MSG);
 	for(int i=0;i<NUM_MSG;++i)
 	{
-		printf("A");
+//		printf("A");
 		processedFileHost++;
 		
 		tmpTimer[0]=my_clock();
@@ -103,7 +101,7 @@ printf("Allocated: %d DPUs\n",numDPU);
 		printf("Processed files: %d/%d\n",processedFileDPU,NUM_MSG);
 		DPU_RANK_FOREACH(setRanks,rank,each_rank)
 		{
-			
+/*			
 			if(ranks_bool[each_rank]==1)
 			{
 				DPU_FOREACH(rank,dpu,each_dpu)
@@ -119,13 +117,13 @@ printf("Allocated: %d DPUs\n",numDPU);
 			{
 				ranks_bool[each_rank] = 1;
 			}
-			
+*/			
 			
 			tmpTimer[2] = my_clock(); 
 			printf("FOREACH_RANK: %d\n",each_rank);
 			DPU_FOREACH(rank,dpu,each_dpu)
 			{
-				//printf("RANK=%d  DPU=%d\n",each_rank,each_dpu);
+//				printf("RANK=%d  DPU=%d\n",each_rank,each_dpu);
 				//File Read
 				for(int j=0;j<NR_TASKLETS;++j)
 				{
@@ -139,25 +137,26 @@ printf("Allocated: %d DPUs\n",numDPU);
 			
 			//Copy to DPU
 			//DPU_ASSERT(dpu_copy_to(dpu,"msgs",0,msg,MESSAGE_SIZE*NR_TASKLETS));
-			DPU_ASSERT(dpu_prepare_xfer(dpu,msg+each_dpu*MESSAGE_SIZE*16));	//Prepare
+			DPU_ASSERT(dpu_prepare_xfer(dpu,msg+MESSAGE_SIZE*16*each_dpu));	//Prepare
 			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_ASYNC));	//Transfer		
-		}	//FOR_EACH
+			}	//FOR_EACH
 		dpu_sync(rank);
-		DPU_ASSERT(dpu_launch(rank, DPU_SYNCHRONOUS));
+		DPU_ASSERT(dpu_launch(rank, DPU_ASYNCHRONOUS));
 		CPUDPUTime += my_clock() - tmpTimer[2];
 	} //FOR_EACH_RANK
 		
-		
-		
+tmpTimer[2]=my_clock();		
+DPU_RANK_FOREACH(setRanks,rank,each_rank){		
 		DPU_FOREACH(rank,dpu,each_dpu)
 		{
-		//DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
-		//DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
-		DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+		DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
+		DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
+		//DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
 
 		for(int k=0;k<8*NR_TASKLETS;++k){ digests_DPU[k%8] = digests_DPU[k%8] ^ tmpD[k]; }
 		}
-
+}
+DPUCPUtime=my_clock() - tmpTimer[2];
 	}	//FOR
 	endTime = my_clock();
 	printf("DPU encryption done\n\n");

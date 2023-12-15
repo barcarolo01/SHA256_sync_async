@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MESSAGE_SIZE 4096
+#define MESSAGE_SIZE (1<<17)
 
 //SHA-256 functions
 #define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
