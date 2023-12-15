@@ -40,9 +40,11 @@ int main()
 	int d=0;
 	uint32_t numDPU=0;
 	uint32_t DPUs[NRDPU];
+	uint32_t ranks_bool[NRRANKS];
 	uint32_t digests_DPU[8];
 	uint32_t digests_HOST[8];
 	for(int j=0;j<NRDPU;++j){ DPUs[j] = 0; }
+	for(int j=0;j<NRRANKS;++j){ ranks_bool[j] = 0; }
 	for(int j=0;j<8;++j){ digests_HOST[j] = 0; digests_DPU[j] = 0; }
 	
 	double DPUkernelTime=0, CPUDPUTime=0,DPUCPUtime=0,initTime=0,endTime=0,HostTime=0,FileTimeHOST=0,FileTimeDPU=0;
@@ -53,9 +55,9 @@ int main()
 	uint32_t tmpH[8];
 	uint32_t tmpD[8*24];
 	
-//DPU_ASSERT(dpu_alloc_ranks(NRRANKS, NULL, &setRanks));	//Allocating DPUs
-DPU_ASSERT(dpu_alloc_ranks(NRRANKS, NULL, &set));	//Allocating DPUs
-DPU_ASSERT(dpu_get_nr_dpus(set,&numDPU));
+DPU_ASSERT(dpu_alloc_ranks(NRRANKS, NULL, &setRanks));	//Allocating DPUs
+//DPU_ASSERT(dpu_alloc_ranks(NRRANKS, NULL, &set));	//Allocating DPUs
+DPU_ASSERT(dpu_get_nr_dpus(setRanks,&numDPU));
 printf("Allocated: %d DPUs\n",numDPU);
 
 	if(NRDPU*16<=NUM_MSG)
@@ -65,7 +67,7 @@ printf("Allocated: %d DPUs\n",numDPU);
 		printf("--Allocated %d DPUs\n",numDPU);
 		printf("--Using %d tasklets\n",NR_TASKLETS);
 		
-		DPU_ASSERT(dpu_load(set, DPU_EXE, NULL));	//Loading DPU program
+		DPU_ASSERT(dpu_load(setRanks, DPU_EXE, NULL));	//Loading DPU program
 	}
 	else
 	{
@@ -78,6 +80,7 @@ printf("Allocated: %d DPUs\n",numDPU);
 	printf("NUM_MSG: %d\n",NUM_MSG);
 	for(int i=0;i<NUM_MSG;++i)
 	{
+		printf("A");
 		processedFileHost++;
 		
 		tmpTimer[0]=my_clock();
@@ -98,37 +101,55 @@ printf("Allocated: %d DPUs\n",numDPU);
 	for(processedFileDPU=0;processedFileDPU<NUM_MSG;d++)
 	{
 		printf("Processed files: %d/%d\n",processedFileDPU,NUM_MSG);
-			//DPU_RANK_FOREACH(setRanks,rank,each_rank)
-			//{
-				tmpTimer[2] = my_clock(); 
-				DPU_FOREACH(set,dpu,each_dpu)
+		DPU_RANK_FOREACH(setRanks,rank,each_rank)
+		{
+			
+			if(ranks_bool[each_rank]==1)
+			{
+				DPU_FOREACH(rank,dpu,each_dpu)
 				{
-					//printf("RANK=%d  DPU=%d\n",each_rank,each_dpu);
-					//File Read
-					for(int j=0;j<NR_TASKLETS;++j)
-					{
-						processedFileDPU++;
-						tmpTimer[0] = my_clock();
-						readFile(msg+MESSAGE_SIZE*j,processedFileDPU%9);
-						FileTimeDPU += (my_clock() - tmpTimer[0]);
-						
-						uint32_t t=padding(msg+MESSAGE_SIZE*j,MESSAGE_SIZE-9);
-					}
-				
-				
-				//Copy to DPU
-				//DPU_ASSERT(dpu_copy_to(dpu,"msgs",0,msg,MESSAGE_SIZE*NR_TASKLETS));
-				DPU_ASSERT(dpu_prepare_xfer(dpu,msg+each_dpu*MESSAGE_SIZE*16));	//Prepare
-				DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_ASYNC));	//Transfer		
-			}	//FOR_EACH
-			CPUDPUTime += my_clock() - tmpTimer[2];
-		//} //FOR_EACH_RANK
+					DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
+					DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
+					//DPU_ASSERT(dpu_copy_from(dpu,"hash_digests",0,tmpD,8*NR_TASKLETS*sizeof(uint32_t)));
+
+					for(int k=0;k<8*NR_TASKLETS;++k){ digests_DPU[k%8] = digests_DPU[k%8] ^ tmpD[k]; }
+				}
+			}
+			else
+			{
+				ranks_bool[each_rank] = 1;
+			}
+			
+			
+			tmpTimer[2] = my_clock(); 
+			printf("FOREACH_RANK: %d\n",each_rank);
+			DPU_FOREACH(rank,dpu,each_dpu)
+			{
+				//printf("RANK=%d  DPU=%d\n",each_rank,each_dpu);
+				//File Read
+				for(int j=0;j<NR_TASKLETS;++j)
+				{
+					processedFileDPU++;
+					tmpTimer[0] = my_clock();
+					readFile(msg+MESSAGE_SIZE*j,processedFileDPU%9);
+					FileTimeDPU += (my_clock() - tmpTimer[0]);
+					
+					uint32_t t=padding(msg+MESSAGE_SIZE*j,MESSAGE_SIZE-9);
+				}
+			
+			//Copy to DPU
+			//DPU_ASSERT(dpu_copy_to(dpu,"msgs",0,msg,MESSAGE_SIZE*NR_TASKLETS));
+			DPU_ASSERT(dpu_prepare_xfer(dpu,msg+each_dpu*MESSAGE_SIZE*16));	//Prepare
+			DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_TO_DPU,"msgs",0,MESSAGE_SIZE*NR_TASKLETS,DPU_XFER_ASYNC));	//Transfer		
+		}	//FOR_EACH
+		dpu_sync(rank);
+		DPU_ASSERT(dpu_launch(rank, DPU_SYNCHRONOUS));
+		CPUDPUTime += my_clock() - tmpTimer[2];
+	} //FOR_EACH_RANK
 		
 		
-		dpu_sync(set);
-		DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 		
-		DPU_FOREACH(set,dpu,each_dpu)
+		DPU_FOREACH(rank,dpu,each_dpu)
 		{
 		//DPU_ASSERT(dpu_prepare_xfer(dpu,tmpD));
 		//DPU_ASSERT(dpu_push_xfer(dpu,DPU_XFER_FROM_DPU,"hash_digests",0,8*NR_TASKLETS*sizeof(uint32_t),DPU_XFER_DEFAULT));
